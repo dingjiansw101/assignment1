@@ -1,4 +1,11 @@
 import numpy as np
+import pdb
+## TODO: find what design pattern it used
+## only find singletons currently
+def _isArrayLike(obj):
+    if type(obj) == str:
+        return False
+    return hasattr(obj, '__iter__') and hasattr(obj, '__len__')
 
 class Node(object):
     """Node in a computation graph."""
@@ -31,7 +38,11 @@ class Node(object):
 
     def __mul__(self, other):
         """TODO: Your code here"""
-
+        if isinstance(other, Node):
+            new_node = mul_op(self, other)
+        else:
+            new_node = mul_byconst_op(self, other)
+        return new_node
     # Allow left-hand-side add and multiply.
     __radd__ = __add__
     __rmul__ = __mul__
@@ -91,6 +102,7 @@ class Op(object):
         """
         raise NotImplementedError
 
+## TODO: single design pattern
 class AddOp(Op):
     """Op to element-wise add two nodes."""
     def __call__(self, node_A, node_B):
@@ -137,10 +149,14 @@ class MulOp(Op):
     def compute(self, node, input_vals):
         """Given values of two input nodes, return result of element-wise multiplication."""
         """TODO: Your code here"""
+        assert len(input_vals) == 2
+        return input_vals[0] * input_vals[1]
 
     def gradient(self, node, output_grad):
         """Given gradient of multiply node, return gradient contributions to each input."""
         """TODO: Your code here"""
+        # TODO: check out it
+        return [output_grad * node.inputs[1], output_grad * node.inputs[0]]
 
 class MulByConstOp(Op):
     """Op to element-wise multiply a nodes by a constant."""
@@ -154,10 +170,12 @@ class MulByConstOp(Op):
     def compute(self, node, input_vals):
         """Given values of input node, return result of element-wise multiplication."""
         """TODO: Your code here"""
-
+        assert len(input_vals) == 1
+        return input_vals[0] * node.const_attr
     def gradient(self, node, output_grad):
         """Given gradient of multiplication node, return gradient contribution to input."""
         """TODO: Your code here"""
+        return [output_grad * node.const_attr]
 
 class MatMulOp(Op):
     """Op to matrix multiply two nodes."""
@@ -185,6 +203,17 @@ class MatMulOp(Op):
     def compute(self, node, input_vals):
         """Given values of input nodes, return result of matrix multiplication."""
         """TODO: Your code here"""
+        assert len(input_vals) == 2
+        if node.matmul_attr_trans_A:
+            matrix_A = np.transpose(input_vals[0])
+        else:
+            matrix_A = input_vals[0]
+        if node.matmul_attr_trans_B:
+            matrix_B = np.transpose(input_vals[1])
+        else:
+            matrix_B = input_vals[1]
+
+        return np.matmul(matrix_A, matrix_B)
 
     def gradient(self, node, output_grad):
         """Given gradient of multiply node, return gradient contributions to each input.
@@ -192,6 +221,8 @@ class MatMulOp(Op):
         Useful formula: if Y=AB, then dA=dY B^T, dB=A^T dY
         """
         """TODO: Your code here"""
+        return [self.__call__(output_grad, node.inputs[1], trans_B=True), self.__call__(node.inputs[0], output_grad, trans_A=True)]
+
 
 class PlaceholderOp(Op):
     """Op to feed value to a nodes."""
@@ -274,9 +305,16 @@ class Executor:
         """
         node_to_val_map = dict(feed_dict)
         # Traverse graph in topological sort order and compute values for all nodes.
+        # pdb.set_trace()
         topo_order = find_topo_sort(self.eval_node_list)
         """TODO: Your code here"""
-
+        for order_node in topo_order:
+            if order_node in node_to_val_map:
+                continue
+            input_vals = [node_to_val_map[node] for node in order_node.inputs]
+            # result = order_node.op.compute(order_node, input_vals)
+            # node_to_val_map[order_node] = result
+            node_to_val_map[order_node] = order_node.op.compute(order_node, input_vals)
         # Collect node values.
         node_val_results = [node_to_val_map[node] for node in self.eval_node_list]
         return node_val_results
@@ -307,6 +345,21 @@ def gradients(output_node, node_list):
     reverse_topo_order = reversed(find_topo_sort([output_node]))
 
     """TODO: Your code here"""
+    for node in reverse_topo_order:
+        # pdb.set_trace()
+        grad = sum_node_list(node_to_output_grads_list[node])
+        node_to_output_grad[node] = grad
+        # input_grads = {input:node.op.gradient(input, grad) for input in node.inputs}
+        input_grads = node.op.gradient(node, grad)
+        # for input_node in input_grads:
+        #     if input_node not in node_to_output_grads_list:
+        #         node_to_output_grads_list[input_node] = []
+        #     node_to_output_grads_list[input_node].append(input_grads[input_node])
+        for i in range(len(node.inputs)):
+            input_node = node.inputs[i]
+            if input_node not in node_to_output_grads_list:
+                node_to_output_grads_list[input_node] = []
+            node_to_output_grads_list[input_node].append(input_grads[i])
 
     # Collect results for gradients requested.
     grad_node_list = [node_to_output_grad[node] for node in node_list]
@@ -328,6 +381,7 @@ def find_topo_sort(node_list):
     visited = set()
     topo_order = []
     for node in node_list:
+        # pdb.set_trace()
         topo_sort_dfs(node, visited, topo_order)
     return topo_order
 

@@ -1,5 +1,6 @@
 import autodiff as ad
 import numpy as np
+import pdb
 
 def test_identity():
     x2 = ad.Variable(name = "x2")
@@ -20,6 +21,8 @@ def test_add_by_const():
     y = 5 + x2
 
     grad_x2, = ad.gradients(y, [x2])
+
+    # pdb.set_trace()
 
     executor = ad.Executor([y, grad_x2])
     x2_val = 2 * np.ones(3)
